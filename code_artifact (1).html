@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>趣味四邊形大冒險：捉捉四邊形</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', 'Fredoka', sans-serif;
+            background: linear-gradient(135deg, #e0f2fe 0%, #fef3c7 100%);
+            touch-action: manipulation;
+            user-select: none;
+            overflow-x: hidden;
+        }
+
+        /* Playground Area */
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 460px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(8px);
+            border: 4px dashed #38bdf8;
+            border-radius: 1.5rem;
+        }
+
+        /* Floating Shape Item */
+        .moving-shape {
+            position: absolute;
+            cursor: pointer;
+            will-change: transform, left, top;
+            transition: border-color 0.2s ease, opacity 0.3s ease;
+            touch-action: manipulation;
+            padding: 10px;
+            margin: -10px;
+            border-radius: 20px;
+        }
+
+        .moving-shape:active {
+            transform: scale(0.9) !important;
+        }
+
+        /* Particle Sparkles */
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 50%;
+            animation: particlePop 0.7s ease-out forwards;
+        }
+
+        @keyframes particlePop {
+            0% {
+                transform: translate(0, 0) scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(var(--dx), var(--dy)) scale(0);
+                opacity: 0;
+            }
+        }
+
+        /* Shake animation on wrong answer */
+        @keyframes gentleShake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+
+        .shake {
+            animation: gentleShake 0.4s ease-in-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-3 md:p-6 text-slate-800">
+
+    <!-- Header Control Area -->
+    <header class="max-w-4xl mx-auto w-full bg-white/90 backdrop-blur-md rounded-3xl p-4 shadow-xl border-4 border-amber-300 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <span class="text-4xl md:text-5xl">🎨</span>
+            <div>
+                <h1 class="text-2xl md:text-3xl font-black text-amber-600 tracking-wide">捉捉四邊形</h1>
+                <p class="text-xs md:text-sm font-bold text-slate-500">特殊教育需要 (SEN) 幾何認知與視覺追蹤訓練</p>
+            </div>
+        </div>
+
+        <!-- Level Selector -->
+        <div class="flex items-center bg-amber-50 p-1.5 rounded-2xl border-2 border-amber-200 gap-1">
+            <button onclick="setLevel(1)" id="btn-lvl-1" class="px-3 md:px-4 py-2 rounded-xl text-sm md:text-base font-black transition-all bg-amber-500 text-white shadow-md">
+                🌱 初級 (慢速)
+            </button>
+            <button onclick="setLevel(2)" id="btn-lvl-2" class="px-3 md:px-4 py-2 rounded-xl text-sm md:text-base font-black transition-all text-amber-800 hover:bg-amber-200">
+                ⭐ 中級 (旋轉)
+            </button>
+            <button onclick="setLevel(3)" id="btn-lvl-3" class="px-3 md:px-4 py-2 rounded-xl text-sm md:text-base font-black transition-all text-amber-800 hover:bg-amber-200">
+                🚀 高級 (快速)
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Game Section -->
+    <main class="max-w-4xl mx-auto w-full my-4 flex-1 flex flex-col items-center justify-start gap-4">
+        
+        <!-- Target Prompt Header Card -->
+        <div class="w-full bg-white rounded-3xl p-4 md:p-5 shadow-xl border-4 border-sky-300 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-4 text-center sm:text-left">
+                <div id="target-icon-preview" class="w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 bg-sky-50 rounded-2xl border-2 border-sky-300 p-2 flex items-center justify-center">
+                    <!-- Target Shape Preview -->
+                </div>
+                <div>
+                    <span class="text-xs font-bold text-sky-600 uppercase tracking-widest">當前任務</span>
+                    <h2 id="target-title" class="text-2xl sm:text-3xl font-black text-slate-800 mt-0.5">
+                        載入中...
+                    </h2>
+                </div>
+            </div>
+
+            <!-- Speech & Control Buttons -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <button onclick="speakTargetPrompt()" class="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-black text-base md:text-lg px-4 py-2.5 rounded-2xl shadow-lg border-b-4 border-emerald-700 transition-all">
+                    <span class="text-xl">🔊</span> 聽題目
+                </button>
+
+                <!-- SEN Freeze / Motion Toggle -->
+                <button id="btn-pause" onclick="togglePause()" class="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-black text-base md:text-lg px-4 py-2.5 rounded-2xl shadow-lg border-b-4 border-amber-700 transition-all">
+                    <span id="pause-icon">⏸️</span> <span id="pause-text">定格</span>
+                </button>
+
+                <button onclick="generateStage()" class="bg-sky-500 hover:bg-sky-600 active:scale-95 text-white font-black text-base md:text-lg px-3.5 py-2.5 rounded-2xl shadow-lg border-b-4 border-sky-700 transition-all" title="換一題">
+                    🔄 換題
+                </button>
+            </div>
+        </div>
+
+        <!-- Dynamic Floating Arena -->
+        <div id="game-container">
+            <!-- Dynamic SVG elements dynamically float here -->
+        </div>
+
+    </main>
+
+    <!-- Bottom Score & Cantonese Feedback Banner -->
+    <footer class="max-w-4xl mx-auto w-full bg-white/90 backdrop-blur-md rounded-3xl p-4 shadow-xl border-4 border-purple-300 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <!-- Star Collection Basket -->
+        <div class="flex items-center gap-3">
+            <span class="text-3xl">🧺</span>
+            <div>
+                <span class="text-xs font-bold text-purple-600">已捕捉目標</span>
+                <div class="flex items-center gap-2">
+                    <div id="star-container" class="flex gap-1 text-2xl">
+                        <!-- Stars generate here -->
+                    </div>
+                    <span id="score-text" class="font-black text-xl text-purple-900">0 / 0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Educational Hints / Feedback Banner -->
+        <div id="feedback-message" class="text-base sm:text-lg font-black text-purple-700 bg-purple-50 px-4 py-2 rounded-2xl border border-purple-200 text-center min-w-[220px]">
+            加油！點擊移動中嘅正確圖形啦！
+        </div>
+    </footer>
+
+    <!-- Game Logic Engine -->
+    <script>
+        // Web Audio Synthesizer
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new AudioContext();
+        }
+
+        function playTone(freq, type, duration, delay = 0) {
+            try {
+                initAudio();
+                setTimeout(() => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = type;
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + duration);
+                }, delay);
+            } catch (e) {}
+        }
+
+        function playSuccessSound() {
+            playTone(523.25, 'triangle', 0.15, 0);   // C5
+            playTone(659.25, 'triangle', 0.15, 80);  // E5
+            playTone(783.99, 'triangle', 0.15, 160); // G5
+            playTone(1046.50, 'triangle', 0.25, 240);// C6
+        }
+
+        function playErrorSound() {
+            playTone(220, 'sawtooth', 0.15, 0);   // A3
+            playTone(185, 'sawtooth', 0.25, 100); // F3
+        }
+
+        // Cantonese Speech Synthesis (Web Speech API)
+        function speakCantonese(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'zh-HK';
+                utterance.rate = 0.85; // Slow for SEN accessibility
+                utterance.pitch = 1.1;
+                
+                const voices = window.speechSynthesis.getVoices();
+                const hkVoice = voices.find(v => v.lang === 'zh-HK' || v.lang.includes('HK') || v.lang.includes('Cantonese'));
+                if (hkVoice) utterance.voice = hkVoice;
+                
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        /**
+         * SVG Shape Library with Visually Distinct Features:
+         * 1. Square: Standard upright orientation, 90-degree right angle indicator corner.
+         * 2. Rhombus: Stretched Diamond shape (45°/135° sharp angles) with inner accent lines.
+         */
+        const SHAPES = {
+            square: {
+                id: 'square',
+                name: '正方形',
+                cantonese: '正方形',
+                renderSvg: () => `
+                    <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-lg">
+                        <!-- Upright Square -->
+                        <rect x="14" y="14" width="72" height="72" rx="6" fill="#ef4444" stroke="#b91c1c" stroke-width="6"/>
+                        <!-- Right Angle Mark for Visual Distinction -->
+                        <path d="M 14 28 L 28 28 L 28 14" fill="none" stroke="#60a5fa" stroke-width="4" stroke-dasharray="2 1"/>
+                        <circle cx="38" cy="42" r="6" fill="#fff"/><circle cx="62" cy="42" r="6" fill="#fff"/>
+                        <circle cx="39" cy="42" r="3" fill="#000"/><circle cx="63" cy="42" r="3" fill="#000"/>
+                        <path d="M 40 60 Q 50 70 60 60" stroke="#000" stroke-width="4" fill="none" stroke-linecap="round"/>
+                    </svg>`
+            },
+            rhombus: {
+                id: 'rhombus',
+                name: '菱形',
+                cantonese: '菱形',
+                renderSvg: () => `
+                    <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-lg">
+                        <!-- Distinct Stretched Diamond (Vertical elongated 45/135 angles) -->
+                        <polygon points="50,4 92,50 50,96 8,50" fill="#f59e0b" stroke="#b45309" stroke-width="6" stroke-linejoin="round"/>
+                        <!-- Inner Accent Diamond Guidelines -->
+                        <polygon points="50,16 80,50 50,84 20,50" fill="none" stroke="#fef08a" stroke-width="2" stroke-dasharray="3 3"/>
+                        <circle cx="40" cy="44" r="6" fill="#fff"/><circle cx="60" cy="44" r="6" fill="#fff"/>
+                        <circle cx="41" cy="44" r="3" fill="#000"/><circle cx="61" cy="44" r="3" fill="#000"/>
+                        <path d="M 43 62 Q 50 68 57 62" stroke="#000" stroke-width="4" fill="none" stroke-linecap="round"/>
+                    </svg>`
+            },
+            rectangle: {
+                id: 'rectangle',
+                name: '長方形',
+                cantonese: '長方形',
+                renderSvg: () => `
+                    <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-lg">
+                        <rect x="6" y="24" width="88" height="52" rx="8" fill="#3b82f6" stroke="#1d4ed8" stroke-width="6"/>
+                        <circle cx="38" cy="45" r="6" fill="#fff"/><circle cx="62" cy="45" r="6" fill="#fff"/>
+                        <circle cx="39" cy="45" r="3" fill="#000"/><circle cx="63" cy="45" r="3" fill="#000"/>
+                        <path d="M 42 60 Q 50 68 58 60" stroke="#000" stroke-width="4" fill="none" stroke-linecap="round"/>
+                    </svg>`
+            },
+            trapezoid: {
+                id: 'trapezoid',
+                name: '梯形',
+                cantonese: '梯形',
+                renderSvg: () => `
+                    <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-lg">
+                        <polygon points="28,18 72,18 94,82 6,82" fill="#10b981" stroke="#047857" stroke-width="6" stroke-linejoin="round"/>
+                        <circle cx="40" cy="45" r="6" fill="#fff"/><circle cx="60" cy="45" r="6" fill="#fff"/>
+                        <circle cx="41" cy="45" r="3" fill="#000"/><circle cx="61" cy="45" r="3" fill="#000"/>
+                        <path d="M 42 62 Q 50 70 58 62" stroke="#000" stroke-width="4" fill="none" stroke-linecap="round"/>
+                    </svg>`
+            },
+            parallelogram: {
+                id: 'parallelogram',
+                name: '平行四邊形',
+                cantonese: '平行四邊形',
+                renderSvg: () => `
+                    <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-lg">
+                        <polygon points="24,24 92,24 76,76 8,76" fill="#8b5cf6" stroke="#6d28d9" stroke-width="6" stroke-linejoin="round"/>
+                        <circle cx="42" cy="45" r="6" fill="#fff"/><circle cx="62" cy="45" r="6" fill="#fff"/>
+                        <circle cx="43" cy="45" r="3" fill="#000"/><circle cx="63" cy="45" r="3" fill="#000"/>
+                        <path d="M 44 60 Q 52 68 60 60" stroke="#000" stroke-width="4" fill="none" stroke-linecap="round"/>
+                    </svg>`
+            }
+        };
+
+        /**
+         * Mathematical Geometric Inclusion Rules:
+         * 1. Target "Rhombus": Square and Rhombus are valid.
+         * 2. Target "Rectangle": Square and Rectangle are valid.
+         * 3. Target "Parallelogram": Square, Rectangle, Rhombus, and Parallelogram are valid.
+         * 4. Target "Square": Only Square is valid.
+         * 5. Target "Trapezoid": Only Trapezoid is valid.
+         */
+        function isGeometricallyValid(clickedShapeKey, targetShapeKey) {
+            if (clickedShapeKey === targetShapeKey) return true;
+
+            // Square is a special Rhombus, Rectangle, and Parallelogram
+            if (clickedShapeKey === 'square') {
+                if (['rhombus', 'rectangle', 'parallelogram'].includes(targetShapeKey)) {
+                    return true;
+                }
+            }
+
+            // Rectangle & Rhombus are also Parallelograms
+            if (['rectangle', 'rhombus'].includes(clickedShapeKey) && targetShapeKey === 'parallelogram') {
+                return true;
+            }
+
+            return false;
+        }
+
+        // Cantonese Inclusion Educational Explanations
+        function getInclusionTip(clickedKey, targetKey) {
+            if (clickedKey === 'square' && targetKey === 'rhombus') {
+                return {
+                    text: '好棒呀！正方形四條邊一樣長，所以佢都係一種特殊嘅菱形嚟㗎！',
+                    banner: '💡 小貼士：正方形 4 條邊一樣長，所以佢亦係一種菱形！'
+                };
+            }
+            if (clickedKey === 'square' && targetKey === 'rectangle') {
+                return {
+                    text: '好棒呀！正方形有 4 個直角，所以佢都係一種特殊嘅長方形嚟㗎！',
+                    banner: '💡 小貼士：正方形有 4 個直角，所以佢亦係一種長方形！'
+                };
+            }
+            if ((clickedKey === 'square' || clickedKey === 'rectangle' || clickedKey === 'rhombus') && targetKey === 'parallelogram') {
+                return {
+                    text: `好棒呀！${SHAPES[clickedKey].name}對邊平行，所以佢都係一種平行四邊形！`,
+                    banner: `💡 小貼士：${SHAPES[clickedKey].name}對邊平行，所以佢亦係平行四邊形！`
+                };
+            }
+            return null;
+        }
+
+        // State Machine
+        let currentLevel = 1;
+        let currentTargetKey = 'square';
+        let remainingTargets = 0;
+        let totalTargets = 0;
+        let isPaused = false;
+        let activeEntities = [];
+        let animationFrameId = null;
+
+        // Level Velocity & Configs
+        const LEVEL_SETTINGS = {
+            1: { count: 4, speedMin: 0.7, speedMax: 1.3, allowRot: false, rotSpeedMax: 0, targetRatio: 0.5 },
+            2: { count: 6, speedMin: 1.4, speedMax: 2.2, allowRot: true, rotSpeedMax: 0.6, targetRatio: 0.4 },
+            3: { count: 8, speedMin: 2.4, speedMax: 3.6, allowRot: true, rotSpeedMax: 1.2, targetRatio: 0.35 }
+        };
+
+        function setLevel(lvl) {
+            currentLevel = lvl;
+            [1, 2, 3].forEach(l => {
+                const btn = document.getElementById(`btn-lvl-${l}`);
+                if (l === lvl) {
+                    btn.className = "px-3 md:px-4 py-2 rounded-xl text-sm md:text-base font-black transition-all bg-amber-500 text-white shadow-md";
+                } else {
+                    btn.className = "px-3 md:px-4 py-2 rounded-xl text-sm md:text-base font-black transition-all text-amber-800 hover:bg-amber-200";
+                }
+            });
+            generateStage();
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            const btnIcon = document.getElementById('pause-icon');
+            const btnText = document.getElementById('pause-text');
+            const feedback = document.getElementById('feedback-message');
+
+            if (isPaused) {
+                btnIcon.innerText = '▶️';
+                btnText.innerText = '繼續';
+                feedback.innerText = '⏸️ 遊戲已定格，慢慢捉啦！';
+            } else {
+                btnIcon.innerText = '⏸️';
+                btnText.innerText = '定格';
+                feedback.innerText = `提示：快啲搵出${SHAPES[currentTargetKey].name}啦！`;
+            }
+        }
+
+        function speakTargetPrompt() {
+            const target = SHAPES[currentTargetKey];
+            speakCantonese(`快啲捉住所有嘅${target.cantonese}啦！`);
+        }
+
+        // Stage Initialization
+        function generateStage() {
+            initAudio();
+            isPaused = false;
+            document.getElementById('pause-icon').innerText = '⏸️';
+            document.getElementById('pause-text').innerText = '定格';
+
+            const shapeKeys = Object.keys(SHAPES);
+            currentTargetKey = shapeKeys[Math.floor(Math.random() * shapeKeys.length)];
+            const targetShape = SHAPES[currentTargetKey];
+
+            // Update UI
+            document.getElementById('target-title').innerText = `捉住所有『${targetShape.name}』`;
+            document.getElementById('target-icon-preview').innerHTML = targetShape.renderSvg();
+
+            const config = LEVEL_SETTINGS[currentLevel];
+            
+            // Build shape set considering valid inclusion shapes
+            let keys = [];
+            const exactCount = Math.max(1, Math.floor(config.count * config.targetRatio));
+            for (let i = 0; i < exactCount; i++) keys.push(currentTargetKey);
+
+            while (keys.length < config.count) {
+                const randomKey = shapeKeys[Math.floor(Math.random() * shapeKeys.length)];
+                keys.push(randomKey);
+            }
+            keys.sort(() => Math.random() - 0.5);
+
+            // Calculate valid target count including mathematical sub-types
+            totalTargets = keys.filter(k => isGeometricallyValid(k, currentTargetKey)).length;
+            remainingTargets = totalTargets;
+
+            updateScoreUI();
+
+            // Clear previous elements
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            const container = document.getElementById('game-container');
+            container.innerHTML = '';
+            activeEntities = [];
+
+            const cWidth = container.clientWidth || 700;
+            const cHeight = container.clientHeight || 440;
+            const size = 110;
+
+            keys.forEach((key, idx) => {
+                const shapeData = SHAPES[key];
+                const el = document.createElement('div');
+                el.className = 'moving-shape w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center';
+                el.innerHTML = shapeData.renderSvg();
+
+                let x = Math.random() * (cWidth - size);
+                let y = Math.random() * (cHeight - size);
+
+                const angle = Math.random() * Math.PI * 2;
+                const speed = config.speedMin + Math.random() * (config.speedMax - config.speedMin);
+                let vx = Math.cos(angle) * speed;
+                let vy = Math.sin(angle) * speed;
+
+                let rotation = config.allowRot ? Math.random() * 360 : 0;
+                let rotSpeed = config.allowRot ? (Math.random() - 0.5) * config.rotSpeedMax * 2 : 0;
+
+                container.appendChild(el);
+
+                const entity = {
+                    id: idx,
+                    key: key,
+                    el: el,
+                    x: x,
+                    y: y,
+                    vx: vx,
+                    vy: vy,
+                    rotation: rotation,
+                    rotSpeed: rotSpeed,
+                    size: size,
+                    captured: false
+                };
+
+                el.onclick = (e) => handleEntityClick(e, entity);
+                activeEntities.push(entity);
+            });
+
+            // Run Bouncing Physics
+            runPhysicsEngine();
+
+            setTimeout(speakTargetPrompt, 300);
+            document.getElementById('feedback-message').innerText = `提示：快啲搵出${targetShape.name}啦！`;
+        }
+
+        // Bouncing Physics Engine
+        function runPhysicsEngine() {
+            const container = document.getElementById('game-container');
+            const cWidth = container.clientWidth;
+            const cHeight = container.clientHeight;
+
+            function update() {
+                if (!isPaused) {
+                    activeEntities.forEach(entity => {
+                        if (entity.captured) return;
+
+                        entity.x += entity.vx;
+                        entity.y += entity.vy;
+                        entity.rotation += entity.rotSpeed;
+
+                        if (entity.x <= 0) {
+                            entity.x = 0;
+                            entity.vx *= -1;
+                        } else if (entity.x >= cWidth - entity.size) {
+                            entity.x = cWidth - entity.size;
+                            entity.vx *= -1;
+                        }
+
+                        if (entity.y <= 0) {
+                            entity.y = 0;
+                            entity.vy *= -1;
+                        } else if (entity.y >= cHeight - entity.size) {
+                            entity.y = cHeight - entity.size;
+                            entity.vy *= -1;
+                        }
+
+                        entity.el.style.left = `${entity.x}px`;
+                        entity.el.style.top = `${entity.y}px`;
+                        entity.el.style.transform = `rotate(${entity.rotation}deg)`;
+                    });
+                }
+                animationFrameId = requestAnimationFrame(update);
+            }
+            update();
+        }
+
+        // Educational Popup Banner
+        function showTeachingCard(bannerText) {
+            const existingCard = document.getElementById('teaching-card');
+            if (existingCard) existingCard.remove();
+
+            const card = document.createElement('div');
+            card.id = 'teaching-card';
+            card.className = 'absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-amber-400 text-amber-950 px-6 py-3 rounded-2xl shadow-2xl border-4 border-white font-black text-sm md:text-base flex items-center gap-2 animate-bounce';
+            card.innerHTML = `<span>🌟</span> <span>${bannerText}</span>`;
+
+            document.getElementById('game-container').appendChild(card);
+
+            setTimeout(() => {
+                if (card) card.remove();
+            }, 3200);
+        }
+
+        // Click Handler for Shapes
+        function handleEntityClick(event, entity) {
+            if (entity.captured) return;
+
+            const isValid = isGeometricallyValid(entity.key, currentTargetKey);
+
+            if (isValid) {
+                // SUCCESS
+                entity.captured = true;
+                playSuccessSound();
+
+                createSparkles(event.clientX, event.clientY);
+
+                entity.el.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+                entity.el.style.transform = 'scale(1.4) rotate(15deg)';
+                entity.el.style.opacity = '0';
+
+                remainingTargets--;
+                updateScoreUI();
+
+                // Check for mathematical inclusion hint
+                const tip = getInclusionTip(entity.key, currentTargetKey);
+                
+                if (tip) {
+                    document.getElementById('feedback-message').innerText = tip.banner;
+                    showTeachingCard(tip.banner);
+                    speakCantonese(tip.text);
+                } else {
+                    const successEncouragements = ['好棒呀！捉到啦！', '太厲害啦！答對了！', '好聰明呀！真棒！'];
+                    const phrase = successEncouragements[Math.floor(Math.random() * successEncouragements.length)];
+                    document.getElementById('feedback-message').innerText = `✨ ${phrase}`;
+                    speakCantonese(phrase);
+                }
+
+                setTimeout(() => {
+                    entity.el.style.display = 'none';
+                    if (remainingTargets <= 0) handleStageVictory();
+                }, 350);
+
+            } else {
+                // INCORRECT SELECTION
+                playErrorSound();
+                entity.el.classList.add('shake');
+
+                const tryAgainPhrases = ['再試一次啦～', '呢個唔係喔，加油！', '睇清楚少少，再捉過！'];
+                const phrase = tryAgainPhrases[Math.floor(Math.random() * tryAgainPhrases.length)];
+                
+                document.getElementById('feedback-message').innerText = `💡 ${phrase}`;
+                speakCantonese(phrase);
+
+                setTimeout(() => {
+                    entity.el.classList.remove('shake');
+                }, 400);
+            }
+        }
+
+        // Particle FX Engine
+        function createSparkles(clientX, clientY) {
+            const container = document.getElementById('game-container');
+            const rect = container.getBoundingClientRect();
+            const originX = clientX - rect.left;
+            const originY = clientY - rect.top;
+
+            const colors = ['#f59e0b', '#ef4444', '#10b981', '#3b82f6', '#8b5cf6'];
+
+            for (let i = 0; i < 12; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                
+                const pSize = 12 + Math.random() * 12;
+                particle.style.width = `${pSize}px`;
+                particle.style.height = `${pSize}px`;
+                particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                
+                particle.style.left = `${originX}px`;
+                particle.style.top = `${originY}px`;
+
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 40 + Math.random() * 60;
+                const dx = Math.cos(angle) * distance;
+                const dy = Math.sin(angle) * distance;
+
+                particle.style.setProperty('--dx', `${dx}px`);
+                particle.style.setProperty('--dy', `${dy}px`);
+
+                container.appendChild(particle);
+
+                setTimeout(() => particle.remove(), 700);
+            }
+        }
+
+        function updateScoreUI() {
+            const container = document.getElementById('star-container');
+            const scoreText = document.getElementById('score-text');
+            const captured = totalTargets - remainingTargets;
+
+            scoreText.innerText = `${captured} / ${totalTargets}`;
+            container.innerHTML = '';
+
+            for (let i = 0; i < totalTargets; i++) {
+                const star = document.createElement('span');
+                if (i < captured) {
+                    star.innerText = '⭐';
+                    star.className = 'scale-110 transition-transform';
+                } else {
+                    star.innerText = '0️⃣';
+                    star.style.opacity = '0.3';
+                }
+                container.appendChild(star);
+            }
+        }
+
+        function handleStageVictory() {
+            playSuccessSound();
+            const victoryText = `太棒了！你順利捉晒所有嘅${SHAPES[currentTargetKey].cantonese}啦！`;
+            document.getElementById('feedback-message').innerText = `🎉 ${victoryText}`;
+            speakCantonese(victoryText);
+
+            setTimeout(() => {
+                generateStage();
+            }, 2800);
+        }
+
+        window.onload = () => {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.onvoiceschanged = () => {
+                    window.speechSynthesis.getVoices();
+                };
+            }
+            generateStage();
+        };
+    </script>
+</body>
+</html>
